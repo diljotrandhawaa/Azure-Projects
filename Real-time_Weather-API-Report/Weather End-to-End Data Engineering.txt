@@ -1,0 +1,81 @@
+Weather End-to-End Data Engineering Project
+
+Step 1: Setting up the Source
+Our Source is a Weather API, https://www.weatherapi.com/my/  
+a. We create an account on the API service website and start the free trial.
+b. There, we will get a API key and with our free plan, we'll be able to make 3 million API calls per month.
+
+Step 2: Setting up the environment:
+a. Create Azure Databricks
+b. 
+
+
+f. Create a Key Vault: 
+this is to store sensitive information like your weather api key. To store the key, inside the key vault, create it then go to the Access Control, add yourself as 'Secrets Key Officer' through role assignments.
+Create a secret and put weather api key as value and save it.
+
+g. Creating the Microsoft Fabric:
+So to use Fabric, you have to have an organization or work account, so you use your work account for this. You create a Fabric resource. Then you go to Power BI, go to workspaces => workspace settings => edit your license to Fabric capacity of the one you created.
+
+
+Step 3: Data Ingestion:
+a. Create and set up Event Hub: 
+	Event hub to store the events when API request is made, but first event hub needs to be created from event Hub namespace.
+	Then we will store the connection string of the event hub in our Key Vault as a secret.
+
+b. Create Streaming-Cluster in Databricks:
+	Go to Databricks and create a Personal User cluster, basic settings.
+
+c. Install EventHub libraries in Cluster:
+To make events send events to the eventhub, we need python library installed in the cluster. To do that, we go to libraries inside the cluster and go to Install New. To install 'azure-eventhub 5.14.0' go to PyPi and submit the name of the library with '==' before the version so 'azure-eventhub == 5.14.0' and install it.
+
+d. Adding the key vault configuration inside Databricks: 
+	1. To do that we are going to create a Key Vault-backed secret scope.
+	2. Copy and paste this -> '#secrets/createScope' in ur notebook url after azuredatabricks.net/  and there you will create a secret 	scope using your vault's url and Resource ID from it's properties.
+	3. Using this scope, we can dynamically map our eventhub connection string from the vault and store it in variable:
+		eventhub_connection_string = dbutils.secrets.get(scope="key-vault-scope", key="eventhub-connection-string") 
+	4. For our notebook code to work, which is sending a test event to the eventhub, the databricks has to have permissions to read 	the key vault. To do that, we will assign 'AzureDatabricks', a service principal, a role of 'Key Vault Secrets User'.
+
+e. Adding the code to our notebook:
+	1. With Python code, we first get the access to the eventHub and save its information.
+	2. Then we connect to the web API and import the data from the api service about a location entered.
+	3. We get several types of data including current weather stats, forecast of weather, alerts and flatten them in one dataset.
+	4. Then we create a function to fetch the weather data every thirty seconds and pass the data to our eventhub.
+
+
+Now we are going to implement it using Visual Studio Code:
+
+Installations and Starting:
+	1. You need Visual Studio Code, install 'Azure functions' and Python extensions.
+	2. Add NCRONTAB expressions for every 30 seconds (https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-timer?tabs=python-v2%2Cisolated-process%2Cnodejs-v4&pivots=programming-language-csharp)
+
+2. Connecting the function app to our Event Hub:
+	1. Like how we created a 'Shared Access Policy' in our event hub, using it's primary connection string, created a secret inside 	Key Vault and access it by accessing the vault through Vault scope. BUT
+	2. That is not supported for function apps, so we create a Identity for our function app (Managed Identity) and add that Identity 	inside Access Control of Event Hub. We add a new role assignment and give function app identity the role of 'Azure Event Hubs Data 	Sender'.
+
+3. Similarly, connect the function app to Key Vault (to get API key):
+	1. Go to Key Vault, Access Control, add a role assignment and add function app as 'Key Vault Secrets User'.
+
+
+6. Import the data in Power BI:
+	1. To do that, we need Eventhouse and for Eventhouse, make sure you have Fabric created in Azure and connect the Fabric license to 	your Power BI workspace by going to workspace settings -> License info and selecting fabric capacity.
+	2. Go to your Eventhouse, it will automatically create a KQL database (similar to SQL DB, just queries are a bit different).
+	3. You need to send your weather data from eventHub to this KQL database. For that, we use Eventstream and connect source as 	Eventhub and destination as KQL database. We can also perform transformations here through different activities before sending the 	data to KQL database.
+Note -- To connect to your EventHub to your Eventstream, you need to have a Access key and for that create new Shared Access policy in your eventhub to connect to Eventstream(Fabric), use Listen as your connectivity type. and here you will Primary key and not the connection string.
+
+	4. Once your source and destination says isActive and turned on, it will continuously get data from eventhub and continue to send 	it to KQL database automatically and in-real time.
+
+	5. Now go to Power BI blank report, Get Data -> KQL database and import the data. This happens through Microsoft Fabric, it 	connects your eventhouse data that your getting from eventHub from your Azure to your Power BI.
+
+	6. If your eventhouse doesn't show up there and it wants you to connect to your Fabric. (enter the Cluster URL that you get from Eventhouse's query URL under overview.)
+
+
+
+	1. In Power BI, we will create a pipeline and load the data from source(event hub) to KQL database.
+	2. KQL is similar to SQL but syntax is different. To generate a KQL query from a SQL query:
+
+	--
+	explain
+	SELECT MAX(Date) from "Weather-table"
+
+	if you run the above sql query starting with a hyphen followed by explain and table name in double quotes cuz of hyphen in the 	name, it will output a corresponding KQL query.
